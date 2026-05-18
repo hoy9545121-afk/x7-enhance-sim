@@ -119,6 +119,20 @@ def _render_interactive(tier_idx: int, target: int, gold_per_attempt: int) -> No
                 st.success(f"✅ **성공!** `+{last['prev_level']}` → `+{last['new_level']}`{suffix}")
             else:
                 st.error(f"❌ **실패 하락!** `+{last['prev_level']}` → `+{last['new_level']}`")
+                # 실패 직후 기운/확률 상승 즉시 표시
+                enh_tried = last["enh_tried"]
+                e_before  = last["energy_before"]
+                e_after   = last["energy_after"]
+                b_before  = last.get("boost_before", 0.0)
+                b_delta   = ENERGY.get(enh_tried, {}).get("boost", 0.0)
+                b_after   = b_before + b_delta
+                st.markdown(
+                    f"**{enh_tried} 델피나드 기운: {e_before:.0f}% → {e_after:.0f}%**"
+                    f"<span style='color:#e8b84b;font-size:0.9rem'>  (+{e_after - e_before:.0f}%p 충전)</span>",
+                    unsafe_allow_html=True,
+                )
+                st.progress(min(1.0, e_after / 100.0))
+                st.caption(f"{enh_tried} 확률 상승 누적: +{b_after:.1f}%p  (이번 +{b_delta:.1f}%p)")
 
         # 누적 통계
         st.markdown("#### 누적 통계")
