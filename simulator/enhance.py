@@ -338,8 +338,9 @@ def compute_expected_base_items(
                         )
                     attempts -= 1              # 실패 시에만 차감
 
-                # 복구: 실패 3회 소진 → 소진된 아이템 자체를 재료로 사용 (추가 아이템 소모 없음)
+                # 복구: 실패 3회 소진 → 같은 강화 단계 아이템 1개 소모 (소진된 아이템 포함)
                 if attempts == 0 and level < target:
+                    used    += pre.get(level, 1.0)   # 현재 레벨(+N) 아이템 비용
                     attempts = 3
 
             total += used
