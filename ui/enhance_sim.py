@@ -1,5 +1,5 @@
 """강화 시뮬레이터 Streamlit UI
-탭 구성: 🎮 인터랙티브 / 📊 배치 통계 / 🔬 몬테카를로 테이블
+탭 구성: 📋 확률표 / 🎮 인터랙티브 / 📊 배치 통계 / 🔬 몬테카를로 테이블
 """
 from __future__ import annotations
 import random
@@ -480,6 +480,103 @@ def _render_montecarlo() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  탭 0 — 확률표
+# ═══════════════════════════════════════════════════════════════
+
+def _render_prob_table() -> None:
+    import math
+
+    st.subheader("강화 성공 확률표")
+    st.caption("단계별·티어별 기본 성공 확률. 델피나드 기운 부스트 미적용 순수 기본값.")
+
+    # ── 확률 테이블 ─────────────────────────────────────────────
+    levels = ["+4", "+5", "+6", "+7", "+8", "+9", "+10"]
+    rows = []
+    for enh in levels:
+        row = {}
+        for ti, label in enumerate(TIER_LABEL):
+            p = PROBS[enh][ti]
+            row[label] = f"{p*100:.2f}%"
+        rows.append(row)
+
+    df_prob = pd.DataFrame(rows, index=levels)
+    df_prob.index.name = "강화 단계"
+
+    # 숫자 DataFrame (히트맵용)
+    df_num = pd.DataFrame(
+        [[PROBS[enh][ti] for ti in range(7)] for enh in levels],
+        index=levels, columns=TIER_LABEL,
+    )
+
+    # Plotly 히트맵
+    fig = go.Figure(go.Heatmap(
+        z=df_num.values * 100,
+        x=TIER_LABEL,
+        y=levels,
+        colorscale=[
+            [0.0,  "#e84b4b"],
+            [0.15, "#e8a04b"],
+            [0.40, "#e8e84b"],
+            [0.70, "#4be8a0"],
+            [1.0,  "#4be84b"],
+        ],
+        zmin=0, zmax=100,
+        text=[[f"{PROBS[enh][ti]*100:.2f}%" for ti in range(7)] for enh in levels],
+        texttemplate="%{text}",
+        textfont={"size": 13},
+        showscale=True,
+        colorbar=dict(title="확률 %", ticksuffix="%"),
+    ))
+    fig.update_layout(
+        **_dark_layout(title="티어×강화 단계별 성공 확률 (%)"),
+        xaxis=dict(title="티어"),
+        yaxis=dict(title="강화 단계", autorange="reversed"),
+        height=380,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ── 에너지/천장 테이블 ───────────────────────────────────────
+    st.subheader("델피나드 에너지 / 천장 시스템")
+    st.caption("실패 누적 시 기운 충전 → 100% 도달 시 다음 강화 100% 보장(천장). 부스트는 기운과 별도로 확률 상승.")
+
+    enh_levels = ["+4", "+5", "+6", "+7", "+8", "+9", "+10"]
+    e_rows = []
+    for enh in enh_levels:
+        cfg = ENERGY[enh]
+        ceil_n = math.ceil(100 / cfg["energy_per_fail"])
+        e_rows.append({
+            "강화 단계": enh,
+            "기운 충전(%/실패)": f"{cfg['energy_per_fail']:.1f}%",
+            "확률 부스트(%p/실패)": f"{cfg['boost']:.1f}%p",
+            "천장 횟수(회)": f"{ceil_n}회",
+            "천장 도달 시": "100% 성공 보장",
+        })
+    df_energy = pd.DataFrame(e_rows).set_index("강화 단계")
+
+    st.dataframe(
+        df_energy,
+        use_container_width=True,
+        height=len(enh_levels) * 38 + 42,
+    )
+
+    # ── 노강 소모 기대값 요약 ────────────────────────────────────
+    st.subheader("노강 기대 소모량 (참고값)")
+    st.caption("MC 시뮬(n≈200) 기준. 복구 포함 — 실패 3회 소진 시 동일 강화 단계 아이템 1개 소모.")
+
+    summary_rows = []
+    for enh in ["+7", "+8", "+9", "+10"]:
+        lvl = int(enh[1:])
+        row = {"강화 목표": enh}
+        for ti in range(7):
+            pre = _get_pre_table(ti)
+            row[TIER_LABEL[ti]] = f"~{pre.get(lvl, 0):,}개"
+        summary_rows.append(row)
+
+    df_sum = pd.DataFrame(summary_rows).set_index("강화 목표")
+    st.dataframe(df_sum, use_container_width=True, height=len(summary_rows) * 38 + 42)
+
+
+# ═══════════════════════════════════════════════════════════════
 #  진입점
 # ═══════════════════════════════════════════════════════════════
 
@@ -508,10 +605,12 @@ def render_enhance_sim() -> None:
         st.caption("강화당 주문서: **1개** (고정)")
 
     # ── 탭 ──────────────────────────────────────────────────────
-    tab1, tab2, tab3 = st.tabs(
-        ["🎮 인터랙티브", "📊 배치 통계", "🔬 몬테카를로 테이블"]
+    tab0, tab1, tab2, tab3 = st.tabs(
+        ["📋 확률표", "🎮 인터랙티브", "📊 배치 통계", "🔬 몬테카를로 테이블"]
     )
 
+    with tab0:
+        _render_prob_table()
     with tab1:
         _render_interactive(tier_idx, target, gold)
     with tab2:
