@@ -114,7 +114,6 @@ def step_once(
     session.total_attempts  += 1
     session.scrolls_used    += 1
     session.gold_spent      += gold_per_attempt
-    session.restore_counter -= 1
 
     if success:
         session.current_level += 1
@@ -122,6 +121,7 @@ def step_once(
             session.pity[tlvl] = [0.0, 0.0]   # 성공 시 기운 초기화
         if ceiling_active:
             session.ceiling_hits += 1
+        session.restore_counter = 3             # 성공(레벨 진급) 시 횟수 리셋
     else:
         if tlvl >= 4 and enh in ENERGY:
             cfg = ENERGY[enh]
@@ -129,7 +129,7 @@ def step_once(
             session.pity[tlvl][1]  = min(
                 100.0, session.pity[tlvl][1] + cfg['energy_per_fail']
             )
-        # 실패 시 단계 하락 없음 (유지)
+        session.restore_counter -= 1            # 실패 시에만 차감
 
     energy_after = session.pity[tlvl][1] if tlvl >= 4 else 0.0
 
@@ -194,6 +194,78 @@ def run_batch(
     return out
 
 
+def simulate_max_level_without_restore(
+    tier_idx: int,
+    n_sim: int = 10_000,
+) -> dict:
+    """내구도 회복(복구) 없이 아이템 1개로 도달 가능한 최대 강화 레벨 분포.
+
+    규칙:
+      - 각 레벨마다 최대 3회 시도 (실패 시 차감, 성공 시 3회 리셋)
+      - 실패 3회 소진 → 아이템 소모, 시뮬 종료
+      - 기운(pity) 시스템 포함
+
+    Returns:
+        level_dist  : {레벨: 해당 레벨에서 종료된 횟수}
+        reach_prob  : {레벨: P(≥레벨 도달)}
+        expected_max: 평균 도달 레벨
+        n_sim       : 시뮬 횟수
+    """
+    rng = random.Random(99 + tier_idx * 73)
+    results: list[int] = []
+
+    for _ in range(n_sim):
+        level    = 0
+        attempts = 3
+        pity     = {k: [0.0, 0.0] for k in range(4, 11)}
+
+        while level < 10:
+            tlvl = level + 1
+            enh  = f'+{tlvl}'
+            pb   = PROBS[enh][tier_idx]
+
+            if tlvl >= 4 and enh in ENERGY:
+                boost_acc, energy_acc = pity[tlvl]
+                p_eff = (
+                    1.0 if energy_acc >= 100.0
+                    else min(1.0, pb + boost_acc / 100.0)
+                )
+            else:
+                p_eff = pb
+
+            if rng.random() < p_eff:   # 성공
+                level += 1
+                if tlvl >= 4:
+                    pity[tlvl] = [0.0, 0.0]
+                attempts = 3           # 레벨 진급 시 리셋
+            else:                       # 실패
+                if tlvl >= 4 and enh in ENERGY:
+                    cfg = ENERGY[enh]
+                    pity[tlvl][0] += cfg['boost']
+                    pity[tlvl][1]  = min(100.0, pity[tlvl][1] + cfg['energy_per_fail'])
+                attempts -= 1
+                if attempts == 0:
+                    break              # 내구도 소진 → 종료
+
+        results.append(level)
+
+    level_dist  = {}
+    for r in results:
+        level_dist[r] = level_dist.get(r, 0) + 1
+
+    reach_prob = {
+        lvl: sum(1 for r in results if r >= lvl) / n_sim
+        for lvl in range(0, 11)
+    }
+
+    return {
+        'level_dist'  : level_dist,
+        'reach_prob'  : reach_prob,
+        'expected_max': sum(results) / n_sim,
+        'n_sim'       : n_sim,
+    }
+
+
 def compute_ceiling_stats() -> dict:
     """티어×강화단계별 천장 도달 확률 계산.
 
@@ -252,12 +324,11 @@ def compute_expected_base_items(
                 else:
                     p_eff = pb
 
-                attempts -= 1
-
                 if rng.random() < p_eff:       # 성공
                     level += 1
                     if tlvl >= 4:
                         pity[tlvl] = [0.0, 0.0]
+                    attempts = 3               # 성공(레벨 진급) 시 횟수 리셋
                 else:                          # 실패 (단계 유지)
                     if tlvl >= 4 and enh in ENERGY:
                         cfg = ENERGY[enh]
@@ -265,13 +336,14 @@ def compute_expected_base_items(
                         pity[tlvl][1]  = min(
                             100.0, pity[tlvl][1] + cfg['energy_per_fail']
                         )
+                    attempts -= 1              # 실패 시에만 차감
 
-                # 복구: 3회 소진 → 현재 레벨 아이템 1개 소모
+                # 복구: 실패 3회 소진 → 현재 레벨 아이템 1개 소모
                 if attempts == 0 and level < target:
                     used    += pre.get(level, 1.0)
                     attempts = 3
 
             total += used
-        pre[target] = total / n_sim
+        pre[target] = math.floor(total / n_sim)  # 내림 처리
 
     return pre

@@ -19,6 +19,7 @@ from simulator.enhance import (
     default_gold,
     effective_prob,
     run_batch,
+    simulate_max_level_without_restore,
     step_once,
 )
 from simulator.constants import C
@@ -82,7 +83,7 @@ def _render_interactive(tier_idx: int, target: int, gold_per_attempt: int) -> No
                 if ceiling_active:
                     st.warning("⚡ 천장! 다음 강화 **100%** 보장")
 
-            st.caption(f"복구까지 {session.restore_counter}회 남음")
+            st.caption(f"이 단계 남은 실패 허용: {session.restore_counter}회 (0회 시 아이템 소모)")
 
             b1, b2 = st.columns(2)
             do_step  = b1.button("🎲 강화 시도", use_container_width=True, type="primary")
@@ -393,6 +394,90 @@ def _render_montecarlo() -> None:
         "💡 값 = +0 노강 아이템 기준. 복구 시 소모된 아이템의 노강 비용이 재귀적으로 포함됩니다. "
         f"(n={n_used}회 시뮬, 변동 있음)"
     )
+
+    # ── 내구도 회복 없이 몇 강까지? ─────────────────────────────
+    st.divider()
+    st.markdown("### 🛡️ 내구도 회복 없이 몇 강까지?")
+    st.markdown(
+        "복구(아이템 소모) **없이** 1개 아이템만으로 도달 가능한 최대 강화 레벨 분포. "
+        "각 레벨에서 실패 **3회** 소진 시 아이템 소멸."
+    )
+
+    nd_c1, nd_c2, nd_c3 = st.columns([2, 2, 1])
+    with nd_c1:
+        nd_tier = st.selectbox(
+            "티어", list(range(7)),
+            format_func=lambda i: TIER_LABEL[i],
+            index=3, key="nodur_tier",
+        )
+    with nd_c2:
+        nd_nsim = st.number_input(
+            "시뮬 횟수", min_value=1000, max_value=100_000,
+            value=10_000, step=1000, key="nodur_nsim",
+        )
+    with nd_c3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        run_nodur = st.button("▶ 실행", key="nodur_run", use_container_width=True, type="primary")
+
+    if run_nodur:
+        with st.spinner("시뮬레이션 중..."):
+            nd_result = simulate_max_level_without_restore(nd_tier, n_sim=int(nd_nsim))
+            st.session_state["nodur_result"] = nd_result
+            st.session_state["nodur_tier"]   = nd_tier
+
+    nd_data = st.session_state.get("nodur_result")
+    if nd_data is None:
+        st.info("[▶ 실행] 버튼을 눌러 시뮬레이션을 시작하세요.")
+    else:
+        rp   = nd_data["reach_prob"]
+        n    = nd_data["n_sim"]
+        exp  = nd_data["expected_max"]
+        dist = nd_data["level_dist"]
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("평균 도달 레벨",  f"+{exp:.2f}")
+        m2.metric("+5 도달 확률",   f"{rp.get(5,0)*100:.1f}%")
+        m3.metric("+7 도달 확률",   f"{rp.get(7,0)*100:.1f}%")
+        m4.metric("+10 도달 확률",  f"{rp.get(10,0)*100:.2f}%")
+
+        # 도달 확률 바 차트
+        lvls  = list(range(1, 11))
+        probs = [rp.get(l, 0) * 100 for l in lvls]
+        colors = [
+            C["green"]  if p >= 50 else
+            C["accent"] if p >= 10 else
+            C["danger"]
+            for p in probs
+        ]
+        fig_nd = go.Figure()
+        fig_nd.add_trace(go.Bar(
+            x=[f"+{l}" for l in lvls],
+            y=probs,
+            marker_color=colors,
+            text=[f"{p:.1f}%" for p in probs],
+            textposition="outside",
+        ))
+        fig_nd.update_layout(
+            **_dark_layout(
+                f"{TIER_LABEL[st.session_state.get('nodur_tier', nd_tier)]} "
+                f"— 내구도 소진 전 도달 확률 (n={n:,})"
+            ),
+            xaxis_title="강화 레벨",
+            yaxis=dict(title="도달 확률 (%)", range=[0, 115], gridcolor=C["border"]),
+            bargap=0.2,
+        )
+        st.plotly_chart(fig_nd, use_container_width=True)
+
+        # 분포 테이블
+        rows_nd = []
+        for l in range(1, 11):
+            stop_cnt = dist.get(l, 0)
+            rows_nd.append({
+                "강화 레벨"     : f"+{l}",
+                "이 레벨 도달"  : f"{rp.get(l,0)*100:.1f}%",
+                "이 레벨에서 종료": f"{stop_cnt:,}회 ({stop_cnt/n*100:.1f}%)",
+            })
+        st.dataframe(pd.DataFrame(rows_nd), use_container_width=True, hide_index=True)
 
 
 # ═══════════════════════════════════════════════════════════════
