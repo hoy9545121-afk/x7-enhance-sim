@@ -118,7 +118,7 @@ def _render_interactive(tier_idx: int, target: int, gold_per_attempt: int) -> No
                 suffix = "  *(천장 발동 100%)*" if last.get("ceiling_hit") else ""
                 st.success(f"✅ **성공!** `+{last['prev_level']}` → `+{last['new_level']}`{suffix}")
             else:
-                st.error(f"❌ **실패 하락!** `+{last['prev_level']}` → `+{last['new_level']}`")
+                st.error(f"❌ **실패!** `{last['enh_tried']}` 도전 → `+{last['new_level']}` 유지")
                 # 실패 직후 기운/확률 상승 즉시 표시
                 enh_tried = last["enh_tried"]
                 e_before  = last["energy_before"]
@@ -184,9 +184,14 @@ def _render_interactive(tier_idx: int, target: int, gold_per_attempt: int) -> No
                     txt += " (천장)"
                 if r.get("restore"):
                     txt += f" [복구+{r['restore_level']}]"
+                강화_txt = (
+                    f"+{r['prev_level']}→+{r['new_level']}"
+                    if r["success"]
+                    else f"{r['enh_tried']} 실패(유지)"
+                )
                 rows.append({
                     "#"    : r["attempt_no"],
-                    "강화" : f"+{r['prev_level']}→+{r['new_level']}",
+                    "강화" : 강화_txt,
                     "결과" : txt,
                     "확률" : f"{r['p_eff'] * 100:.0f}%",
                     "기운" : f"{r['energy_before']:.0f}%→{r['energy_after']:.0f}%",
