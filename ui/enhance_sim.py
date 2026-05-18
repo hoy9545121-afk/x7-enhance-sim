@@ -459,8 +459,8 @@ def _render_montecarlo() -> None:
         ))
         fig_nd.update_layout(
             **_dark_layout(
-                f"{TIER_LABEL[st.session_state.get('nodur_tier', nd_tier)]} "
-                f"— 내구도 소진 전 도달 확률 (n={n:,})"
+                title=f"{TIER_LABEL[st.session_state.get('nodur_tier', nd_tier)]} "
+                      f"— 내구도 소진 전 도달 확률 (n={n:,})"
             ),
             xaxis_title="강화 레벨",
             yaxis=dict(title="도달 확률 (%)", range=[0, 115], gridcolor=C["border"]),
