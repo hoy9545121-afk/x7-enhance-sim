@@ -423,7 +423,6 @@ def _render_montecarlo() -> None:
         with st.spinner("시뮬레이션 중..."):
             nd_result = simulate_max_level_without_restore(nd_tier, n_sim=int(nd_nsim))
             st.session_state["nodur_result"] = nd_result
-            st.session_state["nodur_tier"]   = nd_tier
 
     nd_data = st.session_state.get("nodur_result")
     if nd_data is None:
@@ -459,7 +458,7 @@ def _render_montecarlo() -> None:
         ))
         fig_nd.update_layout(
             **_dark_layout(
-                title=f"{TIER_LABEL[st.session_state.get('nodur_tier', nd_tier)]} "
+                title=f"{TIER_LABEL[nd_tier]} "
                       f"— 내구도 소진 전 도달 확률 (n={n:,})"
             ),
             xaxis_title="강화 레벨",
