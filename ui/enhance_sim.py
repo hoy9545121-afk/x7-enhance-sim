@@ -490,7 +490,7 @@ def _render_prob_table() -> None:
     st.caption("단계별·티어별 기본 성공 확률. 델피나드 기운 부스트 미적용 순수 기본값.")
 
     # ── 확률 테이블 ─────────────────────────────────────────────
-    levels = ["+4", "+5", "+6", "+7", "+8", "+9", "+10"]
+    levels = ["+1", "+2", "+3", "+4", "+5", "+6", "+7", "+8", "+9", "+10"]
     rows = []
     for enh in levels:
         row = {}
@@ -531,7 +531,7 @@ def _render_prob_table() -> None:
         **_dark_layout(title="티어×강화 단계별 성공 확률 (%)"),
         xaxis=dict(title="티어"),
         yaxis=dict(title="강화 단계", autorange="reversed"),
-        height=380,
+        height=520,
     )
     st.plotly_chart(fig, use_container_width=True)
 
