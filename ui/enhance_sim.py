@@ -345,9 +345,9 @@ def _render_montecarlo() -> None:
 
     all_pre = st.session_state["mc_all_pre"]
     n_used  = st.session_state.get("mc_n_sim", "?")
-    targets = list(range(4, 11))
+    targets = list(range(2, 11))
 
-    st.markdown(f"**예상 노강 소모량** (n={n_used}, +1~+3은 항상 성공이므로 노강 1개 = 해당 단계 아이템 1개)")
+    st.markdown(f"**예상 노강 소모량** (n={n_used}, +1은 100% 성공. +2부터 실패 가능 — 복구 포함 기대 소모량)")
 
     # ── 테이블 ──────────────────────────────────────────────────
     rows = []
@@ -386,7 +386,7 @@ def _render_montecarlo() -> None:
         **_dark_layout(title=f"예상 노강 소모 기댓값 (n={n_used} per tier)"),
         xaxis=dict(title="티어"),
         yaxis=dict(title="강화 목표", autorange="reversed"),
-        height=380,
+        height=480,
     )
     st.plotly_chart(fig, use_container_width=True)
 
