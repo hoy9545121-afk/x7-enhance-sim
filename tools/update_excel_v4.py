@@ -208,6 +208,15 @@ for idx, lvl in enumerate(range(1, 11)):
 print("  기대값 완료")
 
 # ──────────────────────────────────────────────────────────────
+# helper
+# ──────────────────────────────────────────────────────────────
+def safe_write(ws, row, col, val):
+    try:
+        ws.cell(row, col).value = val
+    except AttributeError:
+        pass
+
+# ──────────────────────────────────────────────────────────────
 # 델피나드 시트
 # ──────────────────────────────────────────────────────────────
 ws3 = wb['델피나드']
@@ -236,34 +245,63 @@ print("  노강소모 완료")
 
 # ──────────────────────────────────────────────────────────────
 # 요약 시트
+# 실제 행 구조:
+#   확률  : row 7~16 (lvl 1~10)
+#   EV    : 헤더=row19(merged), 컬헤더=row20, 데이터=row21~27 (lvl 4~10)
+#   노강  : 헤더=row33(merged), 컬헤더=row34, 데이터=row35~41 (lvl 4~10)
 # ──────────────────────────────────────────────────────────────
 ws5 = wb['요약']
-difficulty = {4:'보통', 5:'높음', 6:'높음', 7:'매우 높음', 8:'매우 높음', 9:'극한', 10:'극한+'}
-for idx, lvl in enumerate(range(4, 11)):
+difficulty = {
+    1:'안전', 2:'쉬움', 3:'쉬움',
+    4:'보통', 5:'높음', 6:'높음',
+    7:'매우 높음', 8:'매우 높음', 9:'극한', 10:'극한+'
+}
+tier_hdrs = ['T1','T2','T3','T4','T5','T6','T7']
+
+# 1) 확률 — lvl 1~10, row 7~16
+for idx, lvl in enumerate(range(1, 11)):
     row = 7 + idx
     for ti in range(7):
         cell = ws5.cell(row, 3 + ti)
         cell.value = PROBS[lvl][ti]
         cell.number_format = '0.00%'
     ws5.cell(row, 10).value = difficulty[lvl]
-def safe_write(ws, row, col, val):
-    """병합 셀을 건너뛰며 값 쓰기."""
-    try:
-        ws.cell(row, col).value = val
-    except AttributeError:
-        pass
 
+# 2) 누적 기대값 — 컬헤더 row20 복원, 데이터 row21~27
+safe_write(ws5, 20, 2, '강화\n목표')
+for ti in range(7):
+    safe_write(ws5, 20, 3 + ti, tier_hdrs[ti])
+safe_write(ws5, 20, 10, 'T7/T1비')
+# 기존 오염 데이터 클리어 (row18, row21~32)
+for r in [18] + list(range(21, 33)):
+    for c in range(2, 11):
+        safe_write(ws5, r, c, None)
+# 신규 데이터
 for idx, lvl in enumerate(range(4, 11)):
-    row = 18 + idx
+    row = 21 + idx
+    safe_write(ws5, row, 2, f'+{lvl}')
     for ti in range(7):
-        safe_write(ws5, row, 3 + ti, round(cum_ev[lvl][ti], 4))
+        safe_write(ws5, row, 3 + ti, round(cum_ev[lvl][ti], 2))
     ratio = cum_ev[lvl][6] / cum_ev[lvl][0] if cum_ev[lvl][0] > 0 else 1.0
-    safe_write(ws5, row, 10, round(ratio, 4))
+    safe_write(ws5, row, 10, round(ratio, 2))
+
+# 3) 노강소모 — 컬헤더 row34 복원, 데이터 row35~41
+safe_write(ws5, 34, 2, '강화\n목표')
+for ti in range(7):
+    safe_write(ws5, 34, 3 + ti, tier_hdrs[ti])
+safe_write(ws5, 34, 10, '규모')
+# 기존 오염 데이터 클리어 (row29~32, row35~44)
+for r in list(range(29, 33)) + list(range(35, 45)):
+    for c in range(2, 11):
+        safe_write(ws5, r, c, None)
+# 신규 데이터
 for idx, lvl in enumerate(range(4, 11)):
-    row = 29 + idx
+    row = 35 + idx
+    safe_write(ws5, row, 2, f'+{lvl}')
     for ti in range(7):
         safe_write(ws5, row, 3 + ti, mc_all[ti][lvl])
     safe_write(ws5, row, 10, nogang_label(mc_all[3][lvl]))
+
 print("  요약 완료")
 
 wb.save(DST)
