@@ -345,6 +345,7 @@ def compute_expected_base_items(
                     attempts = 3
 
             total += used
-        pre[target] = math.floor(total / n_sim)  # 내림 처리
+        v = round(total / n_sim, 1)
+        pre[target] = v if v < 10 else math.floor(v)  # 소수점: 10 미만만 유지
 
     return pre

@@ -361,16 +361,19 @@ def _render_montecarlo() -> None:
     df_raw = pd.DataFrame(rows).set_index("강화 목표")
 
     # 포맷된 표시용 DataFrame
+    def _fmt(v: float) -> str:
+        return f"{v:.1f}" if v < 10 else f"{int(v):,}"
+
     df_disp = df_raw.copy()
     for col in df_disp.columns:
-        df_disp[col] = df_disp[col].map(lambda v: f"{v:,.1f}")
+        df_disp[col] = df_disp[col].map(_fmt)
     st.dataframe(df_disp, use_container_width=True)
 
     # ── 히트맵 ──────────────────────────────────────────────────
     import math
     z_vals   = [[all_pre[ti].get(t, 0.0) for ti in range(7)] for t in targets]
     z_log    = [[math.log10(max(v, 1.0)) for v in row] for row in z_vals]
-    txt_vals = [[f"{all_pre[ti].get(t, 0):.0f}" for ti in range(7)] for t in targets]
+    txt_vals = [[_fmt(all_pre[ti].get(t, 0.0)) for ti in range(7)] for t in targets]
 
     fig = go.Figure(data=go.Heatmap(
         z=z_log,
