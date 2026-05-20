@@ -15,6 +15,14 @@ TIER_GRADE  = {0:'하급', 1:'하급', 2:'하급', 3:'중급', 4:'중급', 5:'�
 GRADE_COLOR = {'하급': '#4FC3F7', '중급': '#FFD54F', '상급': '#EF9A9A'}
 TIER_EMOJI  = ['⚪', '🟢', '🔵', '🟡', '🟠', '🔴', '🟣']
 
+# 분해 시 획득 충전석 등급 (강화 단계 기준)
+DISASSEMBLE_GRADE = {
+    0: None,
+    1:'하급', 2:'하급', 3:'하급',
+    4:'중급', 5:'중급',
+    6:'상급', 7:'상급', 8:'상급', 9:'상급', 10:'상급',
+}
+
 
 # ── 아이템 dict 헬퍼 ─────────────────────────────────────────────
 def _new_item(item_id: int, tier: int) -> dict:
@@ -100,16 +108,6 @@ def _do_enhance(item_id: int) -> None:
     s['scrolls'] -= 1
     s['gold']    -= s['gold_cost']
 
-    # 횟수=0 상태로 강화 시도 → 파괴
-    if item['charges'] == 0:
-        stones = item['level']
-        grade  = _grade(item)
-        s['stones'][grade] += stones
-        s['items']       = [it for it in s['items'] if it['id'] != item_id]
-        s['selected_id'] = None
-        _log(f"💥 {_tier_label(item)}+{item['level']} 파괴! → {grade} 충전석 {stones}개 지급")
-        return
-
     # 정상 강화
     enh = f"+{tlvl}"
     pb  = PROBS[enh][item['tier']]
@@ -146,6 +144,23 @@ def _do_enhance(item_id: int) -> None:
             _log(f"❌ {_tier_label(item)} +{item['level']} 실패 ({p_eff*100:.0f}%) — 남은 횟수 {_charges_bar(item)}")
 
     _replace_item(item)  # 리스트에 변경된 dict 확실히 반영
+
+
+def _do_disassemble(item_id: int) -> None:
+    """아이템 분해 → 강화 단계 기반 충전석 지급."""
+    s    = _s()
+    item = _get_item(item_id)
+    if item is None:
+        return
+    grade = DISASSEMBLE_GRADE.get(item['level'])
+    qty   = item['level']   # 수량 미정 → 강화 단계 수만큼 임시 적용
+    if grade and qty > 0:
+        s['stones'][grade] += qty
+        _log(f"🔨 {_tier_label(item)}+{item['level']} 분해 → {grade} 충전석 {qty}개 획득")
+    else:
+        _log(f"🔨 {_tier_label(item)}+{item['level']} 분해 (노강 — 충전석 없음)")
+    s['items']       = [it for it in s['items'] if it['id'] != item_id]
+    s['selected_id'] = None
 
 
 def _do_restore(item_id: int) -> None:
@@ -286,19 +301,13 @@ def render_inventory_sim() -> None:
             has_scroll = s['scrolls'] >= 1
             has_gold   = s['gold'] >= s['gold_cost']
             has_stones = s['stones'][grade] >= sc
-            can_enh    = has_scroll and has_gold
+            charges_ok = selected['charges'] > 0
+            can_enh    = has_scroll and has_gold and charges_ok
 
             b1, b2 = st.columns(2)
 
-            if selected['charges'] > 0:
-                enh_label = '🎲 강화 시도'
-                enh_type  = 'primary'
-            else:
-                enh_label = '💥 강화 시도 (파괴!)'
-                enh_type  = 'secondary'
-
-            if b1.button(enh_label, key=f'enh_{selected["id"]}',
-                         use_container_width=True, type=enh_type, disabled=not can_enh):
+            if b1.button('🎲 강화 시도', key=f'enh_{selected["id"]}',
+                         use_container_width=True, type='primary', disabled=not can_enh):
                 _do_enhance(selected['id'])
                 st.rerun()
 
@@ -313,13 +322,19 @@ def render_inventory_sim() -> None:
                 st.caption('⚠ 주문서 없음')
             elif not has_gold:
                 st.caption(f'⚠ 골드 부족 ({s["gold"]:,} / {s["gold_cost"]:,})')
-            if selected['charges'] == 0 and not has_stones:
-                st.caption(f'⚠ {grade} 충전석 부족 ({s["stones"][grade]}/{sc}개)')
+            if selected['charges'] == 0:
+                if not has_stones:
+                    st.caption(f'⚠ {grade} 충전석 부족 ({s["stones"][grade]}/{sc}개)')
+                else:
+                    st.caption('🔒 강화 불가 — 충전석으로 횟수 복구 후 시도하세요')
 
-            if st.button('🗑️ 버리기', key=f'disc_{selected["id"]}', use_container_width=True):
-                _log(f'🗑️ {_tier_label(selected)}+{selected["level"]} 버림')
-                s['items']       = [it for it in s['items'] if it['id'] != selected['id']]
-                s['selected_id'] = None
+            # 분해
+            dis_grade = DISASSEMBLE_GRADE.get(selected['level'])
+            dis_qty   = selected['level']
+            dis_lbl   = (f'🔨 분해 (+{selected["level"]} → {dis_grade} 충전석 {dis_qty}개)'
+                         if dis_grade else '🔨 분해 (충전석 없음)')
+            if st.button(dis_lbl, key=f'dis_{selected["id"]}', use_container_width=True):
+                _do_disassemble(selected['id'])
                 st.rerun()
 
     with right:

@@ -314,10 +314,10 @@ def _render_batch(tier_idx: int, target: int, gold_per_attempt: int) -> None:
 #  탭 3 — 몬테카를로 테이블 (노강 소모 기댓값)
 # ═══════════════════════════════════════════════════════════════
 
-def _render_montecarlo() -> None:
+def _render_montecarlo(tier_idx: int = 3) -> None:
     st.markdown(
-        "복구 메커니즘(3회 소진 → 동일 단계 아이템 소모)을 포함한 **예상 노강 아이템 소모량**을 "
-        "Monte Carlo 시뮬레이션으로 계산합니다."
+        "충전석 복구 메커니즘(3회 소진 → SC_LEVEL개 충전석 소모 → 1회 복구)을 포함한 "
+        "**목표 강화 단계별 누적 충전석 소모 기댓값**을 Monte Carlo 시뮬레이션으로 계산합니다."
     )
 
     c1, c2 = st.columns([3, 1])
@@ -348,9 +348,12 @@ def _render_montecarlo() -> None:
     n_used  = st.session_state.get("mc_n_sim", "?")
     targets = list(range(2, 11))
 
-    st.markdown(f"**예상 노강 소모량** (n={n_used}, +1은 100% 성공. +2부터 실패 가능 — 복구 포함 기대 소모량)")
+    st.markdown(f"**목표 강화 단계별 누적 충전석 소모 기댓값** (n={n_used}, +1은 100% 성공)")
 
-    # ── 테이블 ──────────────────────────────────────────────────
+    def _fmt(v: float) -> str:
+        return f"{v:.1f}" if v < 10 else f"{int(v):,}"
+
+    # ── 티어별 전체 테이블 ───────────────────────────────────────
     rows = []
     for t in targets:
         row: dict = {"강화 목표": f"+{t}"}
@@ -360,15 +363,30 @@ def _render_montecarlo() -> None:
         rows.append(row)
 
     df_raw = pd.DataFrame(rows).set_index("강화 목표")
-
-    # 포맷된 표시용 DataFrame
-    def _fmt(v: float) -> str:
-        return f"{v:.1f}" if v < 10 else f"{int(v):,}"
-
     df_disp = df_raw.copy()
     for col in df_disp.columns:
         df_disp[col] = df_disp[col].map(_fmt)
     st.dataframe(df_disp, use_container_width=True)
+
+    # ── 선택 티어 누적 충전석 상세 ───────────────────────────────
+    from simulator.enhance import SC_LEVEL
+    st.markdown(f"#### 📦 누적 충전석 소모 — {TIER_LABEL[tier_idx]} 상세")
+    st.caption("각 강화 단계까지 도달하는 과정에서 복구에 소모된 충전석 누적 기댓값")
+
+    detail_rows = []
+    for t in range(1, 11):
+        stones_cum = all_pre[tier_idx].get(t, 0.0)
+        stones_step = max(0.0, stones_cum - all_pre[tier_idx].get(t - 1, 0.0))
+        sc_cost = SC_LEVEL[t]
+        detail_rows.append({
+            "강화 단계":          f"+{t}",
+            "복구 1회당 소모":     f"{sc_cost}개",
+            "이 단계 추가 소모":   _fmt(stones_step),
+            "누적 소모 충전석":    _fmt(stones_cum),
+        })
+
+    df_detail = pd.DataFrame(detail_rows).set_index("강화 단계")
+    st.dataframe(df_detail, use_container_width=True, height=len(detail_rows) * 38 + 42)
 
     # ── 히트맵 ──────────────────────────────────────────────────
     import math
@@ -622,4 +640,4 @@ def render_enhance_sim() -> None:
     with tab3:
         _render_batch(tier_idx, target, gold)
     with tab4:
-        _render_montecarlo()
+        _render_montecarlo(tier_idx)
