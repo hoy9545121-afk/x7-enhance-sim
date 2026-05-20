@@ -15,13 +15,9 @@ TIER_GRADE  = {0:'하급', 1:'하급', 2:'하급', 3:'중급', 4:'중급', 5:'�
 GRADE_COLOR = {'하급': '#4FC3F7', '중급': '#FFD54F', '상급': '#EF9A9A'}
 TIER_EMOJI  = ['⚪', '🟢', '🔵', '🟡', '🟠', '🔴', '🟣']
 
-# 분해 시 획득 충전석 등급 (강화 단계 기준)
-DISASSEMBLE_GRADE = {
-    0: None,
-    1:'하급', 2:'하급', 3:'하급',
-    4:'중급', 5:'중급',
-    6:'상급', 7:'상급', 8:'상급', 9:'상급', 10:'상급',
-}
+# 분해 시 획득 충전석 등급 — 티어 기준 (복구 소모와 동일)
+# T1~T3=하급, T4~T5=중급, T6~T7=상급
+# TIER_GRADE와 동일하므로 _grade(item) 재사용
 
 
 # ── 아이템 dict 헬퍼 ─────────────────────────────────────────────
@@ -82,6 +78,87 @@ def _replace_item(item: dict) -> None:
 
 
 # ── 액션 ─────────────────────────────────────────────────────────
+def _do_bulk_enhance_all() -> dict:
+    """인벤토리 전체 아이템을 모든 충전 횟수가 소진될 때까지 일괄 강화.
+    반환: {'attempts': int, 'success': int, 'fail': int, 'stopped': str}
+    """
+    s = _s()
+    attempts = success = fail = 0
+
+    while True:
+        # 강화 가능한 아이템 목록 (charges > 0 이고 레벨 < 10)
+        targets = [it for it in s['items']
+                   if it['charges'] > 0 and it['level'] < 10]
+        if not targets:
+            stopped = 'all_drained'
+            break
+        if s['scrolls'] < 1:
+            stopped = 'no_scroll'
+            break
+        if s['gold'] < s['gold_cost']:
+            stopped = 'no_gold'
+            break
+
+        for item in list(targets):
+            if s['scrolls'] < 1:
+                stopped = 'no_scroll'
+                break
+            if s['gold'] < s['gold_cost']:
+                stopped = 'no_gold'
+                break
+            if item['charges'] == 0:
+                continue
+
+            tlvl = item['level'] + 1
+            if tlvl > 10:
+                continue
+
+            s['scrolls'] -= 1
+            s['gold']    -= s['gold_cost']
+            attempts     += 1
+
+            enh = f'+{tlvl}'
+            pb  = PROBS[enh][item['tier']]
+            if tlvl >= 4 and enh in ENERGY:
+                b_acc, e_acc = item['pity'][tlvl]
+                p_eff   = 1.0 if e_acc >= 100.0 else min(1.0, pb + b_acc / 100.0)
+            else:
+                p_eff, e_acc = pb, 0.0
+
+            s['rng_seed'] += 1
+            rng = random.Random(s['rng_seed'])
+
+            if rng.random() < p_eff:
+                item['level'] += 1
+                if tlvl >= 4:
+                    item['pity'][tlvl] = [0.0, 0.0]
+                success += 1
+            else:
+                if tlvl >= 4 and enh in ENERGY:
+                    cfg = ENERGY[enh]
+                    item['pity'][tlvl][0] += cfg['boost']
+                    item['pity'][tlvl][1]  = min(100.0, item['pity'][tlvl][1] + cfg['energy_per_fail'])
+                item['charges'] -= 1
+                fail += 1
+
+            _replace_item(item)
+        else:
+            continue
+        break  # 자원 부족으로 inner loop 탈출 시
+
+    else:
+        stopped = 'all_drained'
+
+    # 결과 요약 로그
+    stop_msg = {
+        'all_drained': '전체 횟수 소진',
+        'no_scroll':   '주문서 소진',
+        'no_gold':     '골드 부족',
+    }.get(stopped, stopped)
+    _log(f"⚡ 일괄 강화 완료 — {attempts}회 시도 (✅{success} / ❌{fail}) [{stop_msg}]")
+    return {'attempts': attempts, 'success': success, 'fail': fail, 'stopped': stopped}
+
+
 def _add_item(tier: int) -> None:
     s    = _s()
     item = _new_item(s['next_id'], tier)
@@ -147,18 +224,18 @@ def _do_enhance(item_id: int) -> None:
 
 
 def _do_disassemble(item_id: int) -> None:
-    """아이템 분해 → 강화 단계 기반 충전석 지급."""
+    """아이템 분해 → 티어 기반 등급 충전석 지급, 수량=강화 단계."""
     s    = _s()
     item = _get_item(item_id)
     if item is None:
         return
-    grade = DISASSEMBLE_GRADE.get(item['level'])
-    qty   = item['level']   # 수량 미정 → 강화 단계 수만큼 임시 적용
-    if grade and qty > 0:
+    grade = _grade(item)          # 등급은 티어 기준
+    qty   = item['level']         # 수량 미정 → 강화 단계 수만큼 임시 적용
+    if qty > 0:
         s['stones'][grade] += qty
         _log(f"🔨 {_tier_label(item)}+{item['level']} 분해 → {grade} 충전석 {qty}개 획득")
     else:
-        _log(f"🔨 {_tier_label(item)}+{item['level']} 분해 (노강 — 충전석 없음)")
+        _log(f"🔨 {_tier_label(item)} 분해 (노강 — 충전석 없음)")
     s['items']       = [it for it in s['items'] if it['id'] != item_id]
     s['selected_id'] = None
 
@@ -219,6 +296,28 @@ def render_inventory_sim() -> None:
     r[2].metric('🔵 하급 충전석',  f"{s['stones']['하급']}개")
     r[3].metric('🟡 중급 충전석',  f"{s['stones']['중급']}개")
     r[4].metric('🔴 상급 충전석',  f"{s['stones']['상급']}개")
+
+    st.divider()
+
+    # 일괄 강화 버튼
+    items_with_charges = [it for it in s['items'] if it['charges'] > 0 and it['level'] < 10]
+    can_bulk = bool(items_with_charges) and s['scrolls'] >= 1 and s['gold'] >= s['gold_cost']
+
+    bcol1, bcol2 = st.columns([2, 3])
+    if bcol1.button(
+        f'⚡ 전체 오링까지 강화 ({len(items_with_charges)}개 대상)',
+        use_container_width=True, type='primary', disabled=not can_bulk,
+        key='bulk_enh'
+    ):
+        result = _do_bulk_enhance_all()
+        stop_kor = {'all_drained': '전체 횟수 소진', 'no_scroll': '주문서 소진', 'no_gold': '골드 부족'}
+        st.toast(
+            f"⚡ {result['attempts']}회 시도 — ✅{result['success']} / ❌{result['fail']}  "
+            f"[{stop_kor.get(result['stopped'], '')}]",
+            icon='⚡'
+        )
+        st.rerun()
+    bcol2.caption('인벤토리의 모든 아이템을 충전 횟수가 0이 될 때까지 순서대로 강화합니다.')
 
     st.divider()
 
@@ -328,11 +427,11 @@ def render_inventory_sim() -> None:
                 else:
                     st.caption('🔒 강화 불가 — 충전석으로 횟수 복구 후 시도하세요')
 
-            # 분해
-            dis_grade = DISASSEMBLE_GRADE.get(selected['level'])
+            # 분해 — 등급은 티어 기준
+            dis_grade = _grade(selected)
             dis_qty   = selected['level']
             dis_lbl   = (f'🔨 분해 (+{selected["level"]} → {dis_grade} 충전석 {dis_qty}개)'
-                         if dis_grade else '🔨 분해 (충전석 없음)')
+                         if dis_qty > 0 else '🔨 분해 (노강 — 충전석 없음)')
             if st.button(dis_lbl, key=f'dis_{selected["id"]}', use_container_width=True):
                 _do_disassemble(selected['id'])
                 st.rerun()

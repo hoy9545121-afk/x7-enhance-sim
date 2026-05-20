@@ -24,7 +24,7 @@ from simulator.enhance import (
 )
 from simulator.constants import C
 from charts.plotly_charts import _dark_layout
-from ui.inventory_sim import render_inventory_sim
+from ui.inventory_sim import render_inventory_sim, TIER_GRADE
 
 
 # ── 캐시된 노강 소모 테이블 ─────────────────────────────────────
@@ -368,26 +368,6 @@ def _render_montecarlo(tier_idx: int = 3) -> None:
         df_disp[col] = df_disp[col].map(_fmt)
     st.dataframe(df_disp, use_container_width=True)
 
-    # ── 선택 티어 누적 충전석 상세 ───────────────────────────────
-    from simulator.enhance import SC_LEVEL
-    st.markdown(f"#### 📦 누적 충전석 소모 — {TIER_LABEL[tier_idx]} 상세")
-    st.caption("각 강화 단계까지 도달하는 과정에서 복구에 소모된 충전석 누적 기댓값")
-
-    detail_rows = []
-    for t in range(1, 11):
-        stones_cum = all_pre[tier_idx].get(t, 0.0)
-        stones_step = max(0.0, stones_cum - all_pre[tier_idx].get(t - 1, 0.0))
-        sc_cost = SC_LEVEL[t]
-        detail_rows.append({
-            "강화 단계":          f"+{t}",
-            "복구 1회당 소모":     f"{sc_cost}개",
-            "이 단계 추가 소모":   _fmt(stones_step),
-            "누적 소모 충전석":    _fmt(stones_cum),
-        })
-
-    df_detail = pd.DataFrame(detail_rows).set_index("강화 단계")
-    st.dataframe(df_detail, use_container_width=True, height=len(detail_rows) * 38 + 42)
-
     # ── 히트맵 ──────────────────────────────────────────────────
     import math
     z_vals   = [[all_pre[ti].get(t, 0.0) for ti in range(7)] for t in targets]
@@ -416,6 +396,189 @@ def _render_montecarlo(tier_idx: int = 3) -> None:
         "💡 값 = +0 노강 아이템 기준. 복구 시 소모된 아이템의 노강 비용이 재귀적으로 포함됩니다. "
         f"(n={n_used}회 시뮬, 변동 있음)"
     )
+
+    # ── 장비 N개 오링 강화 후 분해 충전석 시뮬 ──────────────────
+    st.divider()
+    st.markdown("### 🔨 장비 N개 오링 강화 후 분해 — 충전석 수급 시뮬")
+    st.markdown(
+        "복구 **없이** 장비를 충전 횟수 0까지 강화한 뒤 전부 분해했을 때 "
+        "획득하는 충전석 총량을 시뮬레이션합니다."
+    )
+
+    # 충전석 등급은 티어 기준 (TIER_GRADE[bd_tier])
+    bd_c1, bd_c2, bd_c3 = st.columns([2, 2, 1])
+    with bd_c1:
+        bd_tier = st.selectbox(
+            "티어", list(range(7)),
+            format_func=lambda i: TIER_LABEL[i],
+            index=tier_idx, key="bd_tier",
+        )
+    with bd_c2:
+        bd_items = st.number_input(
+            "장비 수량", min_value=10, max_value=10000,
+            value=100, step=10, key="bd_items",
+        )
+    with bd_c3:
+        bd_nsim = st.number_input(
+            "시뮬 횟수", min_value=100, max_value=5000,
+            value=500, step=100, key="bd_nsim",
+        )
+
+    run_bd = st.button("🔨 분해 시뮬 실행", key="bd_run",
+                        use_container_width=False, type="primary")
+
+    if run_bd:
+        with st.spinner(f"{bd_items}개 × {bd_nsim}회 시뮬레이션 중..."):
+            import math as _math
+            from collections import Counter as _Counter
+
+            sim_results = []
+            rng_bd = random.Random(99 + bd_tier * 31)
+
+            for _ in range(int(bd_nsim)):
+                stones = {'하급': 0, '중급': 0, '상급': 0}
+                lv_dist = _Counter()
+
+                for _ in range(int(bd_items)):
+                    level   = 0
+                    charges = 3
+                    pity    = {k: [0.0, 0.0] for k in range(4, 11)}
+
+                    while charges > 0 and level < 10:
+                        tlvl = level + 1
+                        enh  = f'+{tlvl}'
+                        pb   = PROBS[enh][bd_tier]
+                        if tlvl >= 4 and enh in ENERGY:
+                            b_acc, e_acc = pity[tlvl]
+                            p_eff = 1.0 if e_acc >= 100.0 else min(1.0, pb + b_acc / 100.0)
+                        else:
+                            p_eff = pb
+
+                        if rng_bd.random() < p_eff:
+                            level += 1
+                            if tlvl >= 4:
+                                pity[tlvl] = [0.0, 0.0]
+                        else:
+                            if tlvl >= 4 and enh in ENERGY:
+                                cfg = ENERGY[enh]
+                                pity[tlvl][0] += cfg['boost']
+                                pity[tlvl][1]  = min(100.0, pity[tlvl][1] + cfg['energy_per_fail'])
+                            charges -= 1
+
+                    grade = TIER_GRADE[bd_tier] if level > 0 else None
+                    if grade:
+                        stones[grade] += level   # 수량=단계 수 (미정 기획안)
+                    lv_dist[level] += 1
+
+                sim_results.append({'stones': stones, 'lv_dist': dict(lv_dist)})
+
+            st.session_state["bd_results"] = {
+                "data": sim_results,
+                "tier": bd_tier, "items": int(bd_items), "nsim": int(bd_nsim),
+            }
+
+    bd_data = st.session_state.get("bd_results")
+    if bd_data is None:
+        st.info("[🔨 분해 시뮬 실행] 버튼을 눌러 시뮬레이션을 시작하세요.")
+    else:
+        bd_res   = bd_data["data"]
+        bd_n     = bd_data["nsim"]
+        bd_ni    = bd_data["items"]
+        bd_t     = bd_data["tier"]
+
+        # 충전석 평균
+        avg = {g: np.mean([r['stones'][g] for r in bd_res]) for g in ['하급','중급','상급']}
+        std = {g: np.std( [r['stones'][g] for r in bd_res]) for g in ['하급','중급','상급']}
+
+        st.markdown(f"#### 결과 — {TIER_LABEL[bd_t]} {bd_ni}개 오링 후 분해 (n={bd_n}회)")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("🔵 하급 충전석", f"{avg['하급']:.0f}개",
+                  delta=f"±{std['하급']:.0f}", delta_color="off")
+        m2.metric("🟡 중급 충전석", f"{avg['중급']:.0f}개",
+                  delta=f"±{std['중급']:.0f}", delta_color="off")
+        m3.metric("🔴 상급 충전석", f"{avg['상급']:.0f}개",
+                  delta=f"±{std['상급']:.0f}", delta_color="off")
+
+        # 강화 레벨 분포 (누적 평균)
+        all_lv_totals = _Counter()
+        for r in bd_res:
+            for lv, cnt in r['lv_dist'].items():
+                all_lv_totals[lv] += cnt
+        avg_lv = {lv: cnt / bd_n for lv, cnt in sorted(all_lv_totals.items())}
+
+        lvls   = list(range(0, 11))
+        counts = [avg_lv.get(l, 0) for l in lvls]
+        tier_grade = TIER_GRADE[bd_t]
+        grade_color = {'하급': '#4FC3F7', '중급': '#FFD54F', '상급': '#EF9A9A'}
+        bar_color   = grade_color.get(tier_grade, '#EF9A9A')
+        colors = [bar_color if l > 0 else '#546E7A' for l in lvls]
+
+        fig_bd = go.Figure()
+        fig_bd.add_trace(go.Bar(
+            x=[f"+{l}" for l in lvls],
+            y=counts,
+            marker_color=colors,
+            text=[f"{c:.1f}" for c in counts],
+            textposition="outside",
+        ))
+        fig_bd.update_layout(
+            **_dark_layout(
+                title=f"{TIER_LABEL[bd_t]} {bd_ni}개 — 강화 최종 레벨 분포 (평균, n={bd_n})"
+            ),
+            xaxis_title="최종 강화 레벨",
+            yaxis=dict(title=f"평균 아이템 수 (/{bd_ni}개)", gridcolor=C["border"]),
+            bargap=0.15,
+        )
+        st.plotly_chart(fig_bd, use_container_width=True)
+
+        # 레벨별 상세 표
+        detail_bd = []
+        for l in lvls:
+            avg_cnt = avg_lv.get(l, 0)
+            grade   = TIER_GRADE[bd_t] if l > 0 else '-'
+            qty     = l if l > 0 else 0
+            detail_bd.append({
+                "최종 레벨":     f"+{l}",
+                "평균 아이템 수": f"{avg_cnt:.1f}개",
+                "비율":          f"{avg_cnt / bd_ni * 100:.1f}%",
+                "분해 충전석 등급": grade,
+                "개당 획득":     f"{qty}개 (미정)" if qty > 0 else '-',
+                "소계 (평균)":   f"{avg_cnt * qty:.1f}개" if qty > 0 else '-',
+            })
+        st.dataframe(pd.DataFrame(detail_bd).set_index("최종 레벨"),
+                     use_container_width=True)
+
+        st.caption("💡 충전석 획득 수량은 '강화 단계 수 = 획득량'으로 임시 적용 (기획 미정).")
+
+    # ── 선택 티어 누적 충전석 상세 ───────────────────────────────
+    if "mc_all_pre" in st.session_state:
+        from simulator.enhance import SC_LEVEL
+        st.divider()
+
+        det_c1, det_c2 = st.columns([2, 5])
+        with det_c1:
+            det_tier = st.selectbox(
+                "티어 선택", list(range(7)),
+                format_func=lambda i: TIER_LABEL[i],
+                index=tier_idx, key="det_tier",
+            )
+        st.markdown(f"#### 📦 누적 충전석 소모 — {TIER_LABEL[det_tier]} 상세")
+        st.caption("각 강화 단계까지 도달하는 과정에서 복구에 소모된 충전석 누적 기댓값")
+
+        detail_rows = []
+        for t in range(1, 11):
+            stones_cum  = all_pre[det_tier].get(t, 0.0)
+            stones_step = max(0.0, stones_cum - all_pre[det_tier].get(t - 1, 0.0))
+            sc_cost     = SC_LEVEL[t]
+            detail_rows.append({
+                "강화 단계":        f"+{t}",
+                "복구 1회당 소모":   f"{sc_cost}개",
+                "이 단계 추가 소모": _fmt(stones_step),
+                "누적 소모 충전석":  _fmt(stones_cum),
+            })
+
+        df_detail = pd.DataFrame(detail_rows).set_index("강화 단계")
+        st.dataframe(df_detail, use_container_width=True, height=len(detail_rows) * 38 + 42)
 
     # ── 내구도 회복 없이 몇 강까지? ─────────────────────────────
     st.divider()

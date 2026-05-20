@@ -386,7 +386,7 @@ rules = [
     ('횟수 0 → 강화 불가', '🔒 강화 시도 불가 — 충전석 소모로 횟수 복구 후 강화 가능'),
     ('충전석 사용 조건', '남은 강화 횟수가 0일 때만 충전 가능 / 1개 소모 → 횟수 1 충전'),
     ('충전 횟수 제한', '제한 없음 (충전석이 있는 한 계속 충전 가능)'),
-    ('충전석 획득 방법', '장비 분해 시 획득 — 강화 단계 기준: 1~3강=하급 / 4~5강=중급 / 6강 이상=상급'),
+    ('충전석 획득 방법', '장비 분해 시 획득 — 티어 기준: T1~T3=하급 / T4~T5=중급 / T6~T7=상급'),
     ('델피나드 기운', '+4 이상 — 실패마다 기운 충전, 100% 시 천장 보장'),
 ]
 for i, (k, v) in enumerate(rules, 5):
@@ -427,8 +427,8 @@ ws0.merge_cells('B18:J18')
 ws0.cell(18, 2, '■ 신규 시스템 상세').font = hfont(size=11, color='FF1F3A5A')
 ext_notes = [
     ('충전석 획득 방법', '강화된 장비를 분해하면 강화 단계에 비례한 충전석 획득 (단계 수=획득량, 미정)'),
-    ('분해 충전석 등급', '분해 단계 기준: 1~3강 → 하급 / 4~5강 → 중급 / 6강 이상 → 상급'),
-    ('복구 비용 등급', '복구 소모 등급은 티어 기준: T1~3=하급 / T4~5=중급 / T6~7=상급'),
+    ('충전석 등급 기준', '티어 기준: T1~T3=하급 / T4~T5=중급 / T6~T7=상급 (분해 획득·복구 소모 모두 동일)'),
+    ('복구 비용 등급', '복구 소모 등급 = 분해 획득 등급 = 티어 기준 (강화 단계와 무관)'),
     ('메인 아이템 보존', '횟수 0이 되어도 파괴 없음 → 강화 단계 및 델피나드 기운 진행도 완전 보존'),
     ('밸런스 시사점', '충전석 분해 수급 설계에 따라 강화 비용이 크게 달라짐 — 분해 수량(미정) 확정 필요'),
 ]
@@ -620,45 +620,52 @@ for i, (tier, grade, cost, note, bg) in enumerate(stone_cfg, 6):
     ws4.merge_cells(start_row=i, start_column=5, end_row=i, end_column=9)
     write_data(ws4, i, 5, note, bg=bg[2:], align=left())
 
-# 분해 시 충전석 획득 및 복구 소모 표
-write_header(ws4, 11, 2, '■ 강화 단계별 분해 획득 충전석 / 복구 소모 충전석', span=9, bg=C_SUBHDR[2:])
-write_header(ws4, 12, 2, '강화 단계')
+# ── 티어별 충전석 등급 표 (분해 획득 = 복구 소모 등급 동일)
+write_header(ws4, 11, 2, '■ 티어별 충전석 등급 (분해 획득 · 복구 소모 공통)', span=9, bg=C_SUBHDR[2:])
+write_header(ws4, 12, 2, '티어')
 write_header(ws4, 12, 3, '충전석 등급')
 write_header(ws4, 12, 4, '분해 획득량')
-write_header(ws4, 12, 5, '복구 소모량')
-write_header(ws4, 12, 6, '비고', span=4)
+write_header(ws4, 12, 5, '비고', span=5)
 ws4.row_dimensions[12].height = 22
 
-_dis_grade = {
-    1:'하급', 2:'하급', 3:'하급',
-    4:'중급', 5:'중급',
-    6:'상급', 7:'상급', 8:'상급', 9:'상급', 10:'상급',
-}
+_tier_grade_table = {0:'하급', 1:'하급', 2:'하급', 3:'중급', 4:'중급', 5:'상급', 6:'상급'}
 _grade_bg = {'하급': 'FFE3F2FD', '중급': 'FFFFF9C4', '상급': 'FFFCE4D6'}
-for idx, lvl in enumerate(range(1, 11)):
+for idx in range(7):
     r = 13+idx; ws4.row_dimensions[r].height = 20
-    grade = _dis_grade[lvl]
-    sc_l  = SC_LEVEL[lvl]
+    grade = _tier_grade_table[idx]
     bg_g  = _grade_bg[grade]
-    write_data(ws4, r, 2, f'+{lvl}',       bold=True)
-    write_data(ws4, r, 3, grade,            bold=True, bg=bg_g[2:])
-    write_data(ws4, r, 4, '미정',           bg='FFFFF2CC')
-    write_data(ws4, r, 5, f'{sc_l}개',      bold=True, bg='FFE8EAF6')
-    ws4.merge_cells(start_row=r, start_column=6, end_row=r, end_column=9)
+    write_data(ws4, r, 2, TIER[idx],  bold=True)
+    write_data(ws4, r, 3, grade,      bold=True, bg=bg_g[2:])
+    write_data(ws4, r, 4, '미정',     bg='FFFFF2CC')
+    ws4.merge_cells(start_row=r, start_column=5, end_row=r, end_column=9)
+    write_data(ws4, r, 5, '획득 수량 = 강화 단계 수 (기획 미정)', bg='FFFFFFFF', align=left())
+
+# ── 강화 단계별 복구 소모 충전석 수량 표
+write_header(ws4, 22, 2, '■ 강화 단계별 복구 소모 충전석 수량 (등급은 위 티어 기준)', span=9, bg=C_SUBHDR[2:])
+write_header(ws4, 23, 2, '강화 단계')
+write_header(ws4, 23, 3, '복구 소모량')
+write_header(ws4, 23, 4, '비고', span=6)
+ws4.row_dimensions[23].height = 22
+for idx, lvl in enumerate(range(1, 11)):
+    r = 24+idx; ws4.row_dimensions[r].height = 20
+    sc_l = SC_LEVEL[lvl]
+    write_data(ws4, r, 2, f'+{lvl}',    bold=True)
+    write_data(ws4, r, 3, f'{sc_l}개',  bold=True, bg='FFE8EAF6')
+    ws4.merge_cells(start_row=r, start_column=4, end_row=r, end_column=9)
     note = ('안전 구간' if lvl <= 3 else
             '델피나드 기운 시작' if lvl == 4 else '')
-    write_data(ws4, r, 6, note, bg='FFFFFFFF', align=left())
+    write_data(ws4, r, 4, note, bg='FFFFFFFF', align=left())
 
-# 외부조달 충전석 소모량 분석 (핵심 테이블)
-write_header(ws4, 26, 2, '■ 외부조달 전략 — 목표별 소모 충전석 수 (MC n=3,000)', span=9, bg='1565C0')
-ws4.cell(26, 2).font = hfont(size=11)
-write_header(ws4, 27, 2, '강화 목표')
-for ti, t in enumerate(TIER): write_header(ws4, 27, 3+ti, t)
-write_header(ws4, 27, 10, '피더 아이템 수 (T4)')
-ws4.row_dimensions[26].height = 22; ws4.row_dimensions[27].height = 20
+# 외부조달 충전석 소모량 분석 (핵심 테이블)  ← SC표(row 24~33) 다음 row 35부터
+write_header(ws4, 35, 2, '■ 외부조달 전략 — 목표별 소모 충전석 수 (MC n=3,000)', span=9, bg='1565C0')
+ws4.cell(35, 2).font = hfont(size=11)
+write_header(ws4, 36, 2, '강화 목표')
+for ti, t in enumerate(TIER): write_header(ws4, 36, 3+ti, t)
+write_header(ws4, 36, 10, '피더 아이템 수 (T4)')
+ws4.row_dimensions[35].height = 22; ws4.row_dimensions[36].height = 20
 
 for idx, lvl in enumerate(range(1, 11)):
-    r = 28+idx; ws4.row_dimensions[r].height = 18
+    r = 37+idx; ws4.row_dimensions[r].height = 18
     write_data(ws4, r, 2, f'+{lvl}', bold=True)
     for ti in range(7):
         s = ext_stones_all[ti][lvl]
