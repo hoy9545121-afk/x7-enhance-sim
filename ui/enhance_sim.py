@@ -427,10 +427,11 @@ def _render_montecarlo(tier_idx: int = 3) -> None:
     run_bd = st.button("🔨 분해 시뮬 실행", key="bd_run",
                         use_container_width=False, type="primary")
 
+    from collections import Counter as _Counter
+
     if run_bd:
         with st.spinner(f"{bd_items}개 × {bd_nsim}회 시뮬레이션 중..."):
             import math as _math
-            from collections import Counter as _Counter
 
             sim_results = []
             rng_bd = random.Random(99 + bd_tier * 31)
