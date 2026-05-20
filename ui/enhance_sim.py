@@ -24,6 +24,7 @@ from simulator.enhance import (
 )
 from simulator.constants import C
 from charts.plotly_charts import _dark_layout
+from ui.inventory_sim import render_inventory_sim
 
 
 # ── 캐시된 노강 소모 테이블 ─────────────────────────────────────
@@ -608,8 +609,8 @@ def render_enhance_sim() -> None:
         st.caption("강화당 주문서: **1개** (고정)")
 
     # ── 탭 ──────────────────────────────────────────────────────
-    tab0, tab1, tab2, tab3 = st.tabs(
-        ["📋 확률표", "🎮 인터랙티브", "📊 배치 통계", "🔬 몬테카를로 테이블"]
+    tab0, tab1, tab2, tab3, tab4 = st.tabs(
+        ["📋 확률표", "🎮 인터랙티브", "🎒 인벤토리", "📊 배치 통계", "🔬 몬테카를로 테이블"]
     )
 
     with tab0:
@@ -617,6 +618,8 @@ def render_enhance_sim() -> None:
     with tab1:
         _render_interactive(tier_idx, target, gold)
     with tab2:
-        _render_batch(tier_idx, target, gold)
+        render_inventory_sim()
     with tab3:
+        _render_batch(tier_idx, target, gold)
+    with tab4:
         _render_montecarlo()

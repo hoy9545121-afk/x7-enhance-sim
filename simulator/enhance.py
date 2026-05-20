@@ -10,15 +10,15 @@ ENHANCES = ['+1', '+2', '+3', '+4', '+5', '+6', '+7', '+8', '+9', '+10']
 PROBS: dict[str, list[float]] = {
     #            T1     T2      T3      T4      T5      T6      T7
     '+1' : [1.000, 1.000,  1.000,  1.000,  1.000,  1.000,  1.000],  # 안전 강화
-    '+2' : [0.900, 0.810,  0.720,  0.630,  0.540,  0.450,  0.360],
-    '+3' : [0.750, 0.675,  0.600,  0.525,  0.450,  0.375,  0.300],
-    '+4' : [0.500, 0.450,  0.400,  0.350,  0.300,  0.250,  0.200],
-    '+5' : [0.300, 0.270,  0.240,  0.210,  0.180,  0.150,  0.120],  # 주요 관문
-    '+6' : [0.250, 0.225,  0.200,  0.175,  0.150,  0.125,  0.100],
-    '+7' : [0.200, 0.180,  0.160,  0.140,  0.120,  0.100,  0.080],
-    '+8' : [0.150, 0.135,  0.120,  0.105,  0.090,  0.075,  0.060],
-    '+9' : [0.100, 0.090,  0.080,  0.070,  0.060,  0.050,  0.040],
-    '+10': [0.050, 0.045,  0.040,  0.035,  0.030,  0.025,  0.020],
+    '+2' : [0.950, 0.900,  0.810,  0.720,  0.630,  0.540,  0.450],
+    '+3' : [0.850, 0.750,  0.675,  0.600,  0.525,  0.450,  0.375],
+    '+4' : [0.700, 0.500,  0.450,  0.400,  0.350,  0.300,  0.250],
+    '+5' : [0.500, 0.300,  0.270,  0.240,  0.210,  0.180,  0.150],  # 주요 관문
+    '+6' : [0.300, 0.250,  0.225,  0.200,  0.175,  0.150,  0.125],
+    '+7' : [0.200, 0.200,  0.180,  0.160,  0.140,  0.120,  0.100],
+    '+8' : [0.150, 0.150,  0.135,  0.120,  0.105,  0.090,  0.075],
+    '+9' : [0.100, 0.100,  0.090,  0.080,  0.070,  0.060,  0.050],
+    '+10': [0.050, 0.050,  0.045,  0.040,  0.035,  0.030,  0.025],
 }
 
 # energy_per_fail: 실패 1회당 기운 충전%  /  boost: 실패 1회당 성공 확률 상승%p
@@ -35,6 +35,20 @@ ENERGY: dict[str, dict[str, float]] = {
 
 ENH_LIST   = ['+4', '+5', '+6', '+7', '+8', '+9', '+10']
 TIER_LABEL = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
+
+# 강화 단계별 복구 1회당 소모 충전석 수 (기획안 — 미정)
+SC_LEVEL: dict[int, int] = {
+    1:  1,   # +1  : 안전 강화 (실패 없음)
+    2:  1,   # +2
+    3:  2,   # +3
+    4:  3,   # +4
+    5:  3,   # +5
+    6:  5,   # +6
+    7:  5,   # +7
+    8:  7,   # +8
+    9:  10,  # +9
+    10: 10,  # +10
+}
 
 # 티어×강화단계별 기본 골드 비용 (강화 1회당, 인덱스 0=T1..6=T7)
 GOLD_BASE: dict[str, list[int]] = {
@@ -69,7 +83,8 @@ class EnhanceSession:
     scrolls_used: int = 0
     gold_spent: int = 0
     ceiling_hits: int = 0
-    restore_counter: int = 3   # 복구까지 남은 강화 횟수 (3에서 카운트다운)
+    restore_counter: int = 3   # 남은 강화 횟수 (실패 시 -1, 성공 레벨업 시 3 리셋)
+    stones_used: int = 0       # 소모 충전석 누계
     restore_events: list = field(default_factory=list)  # 복구 발동 시점의 레벨 기록
     history: list = field(default_factory=list)
     done: bool = False
@@ -138,15 +153,19 @@ def step_once(
     if session.current_level >= session.target_level:
         session.done = True
 
-    # ── 복구 발동 (3회 소진, 미완료 시에만) ──
+    # ── 복구 발동 (횟수 소진, 미완료 시에만) ──
+    # 횟수=0 → 충전석 SC_LEVEL[tlvl]개 소모해 1회 복구 (메인 아이템 보존)
     restore_triggered = False
     restore_level     = None
-    if session.restore_counter == 0:
-        session.restore_counter = 3
-        if not session.done:
-            restore_triggered = True
-            restore_level     = session.current_level
-            session.restore_events.append(restore_level)
+    stones_spent_now  = 0
+    if session.restore_counter == 0 and not session.done:
+        sc = SC_LEVEL[tlvl]
+        session.stones_used     += sc
+        session.restore_counter  = 1     # 충전석 sc개 → 1회 복구
+        restore_triggered        = True
+        restore_level            = session.current_level
+        stones_spent_now         = sc
+        session.restore_events.append(restore_level)
 
     result = {
         "attempt_no"    : session.total_attempts,
@@ -163,6 +182,7 @@ def step_once(
         "boost_before"  : boost_before,
         "restore"       : restore_triggered,
         "restore_level" : restore_level,
+        "stones_spent"  : stones_spent_now,
         "gold_spent"    : session.gold_spent,
         "done"          : session.done,
     }
@@ -191,6 +211,7 @@ def run_batch(
             "gold"         : sess.gold_spent,
             "ceiling_hits" : sess.ceiling_hits,
             "restore_count": len(sess.restore_events),
+            "stones_used"  : sess.stones_used,
         })
     return out
 
@@ -295,20 +316,24 @@ def compute_expected_base_items(
     n_sim: int = 200,
     max_target: int = 10,
 ) -> dict[int, float]:
-    """Monte Carlo: pre[k] = +k 아이템 1개를 만들기 위해 필요한 노강 아이템 기댓값.
+    """Monte Carlo: pre[k] = +k 목표 강화 시 소모 기대 충전석 수.
 
-    원본 simulate() 로직과 동일 — 복구 메커니즘(3회 소진 → 현재 레벨 아이템 1개 소모) 포함.
-    pre[0] = 1.0 (노강 아이템 1개 = 기준)
+    신규 충전석 모델:
+      - 메인 아이템 보존 (파괴 없음)
+      - 실패 3회 소진 → SC_LEVEL[tlvl]개 충전석 소모 → 1회 복구
+      - pre[0] = 0 (충전석 소모 없음)
     """
     rng = random.Random(42 + tier_idx * 137 + n_sim)
-    pre: dict[int, float] = {0: 1.0}
+    pre: dict[int, float] = {0: 0.0}
 
     for target in range(1, max_target + 1):
         total = 0.0
         for _ in range(n_sim):
-            level, used, attempts = 0, 1.0, 3
-            pity  = {k: [0.0, 0.0] for k in range(4, 11)}
-            guard = 0
+            level    = 0
+            attempts = 3
+            stones   = 0.0
+            pity     = {k: [0.0, 0.0] for k in range(4, 11)}
+            guard    = 0
 
             while level < target and guard < 300_000:
                 guard += 1
@@ -339,13 +364,13 @@ def compute_expected_base_items(
                         )
                     attempts -= 1              # 실패 시에만 차감
 
-                # 복구: 실패 3회 소진 → 같은 강화 단계 아이템 1개 소모 (소진된 아이템 포함)
+                # 복구: 횟수 소진 → 충전석 SC_LEVEL[tlvl]개 소모 → 1회 복구
                 if attempts == 0 and level < target:
-                    used    += pre.get(level, 1.0)   # 현재 레벨(+N) 아이템 비용
-                    attempts = 3
+                    stones   += SC_LEVEL[tlvl]
+                    attempts  = 1
 
-            total += used
+            total += stones
         v = round(total / n_sim, 1)
-        pre[target] = v if v < 10 else math.floor(v)  # 소수점: 10 미만만 유지
+        pre[target] = v if v < 10 else math.floor(v)
 
     return pre
