@@ -567,8 +567,21 @@ write_header(ws3, 4, 2, '강화 단계')
 for h, c in [('기운%/실패', 3), ('확률%p/실패', 4), ('천장(회)', 5)]:
     write_header(ws3, 4, c, h)
 write_header(ws3, 4, 6, '천장 도달 시', span=4)
-for idx, lvl in enumerate(range(4,11)):
+
+# +1~+3: 델피나드 기운 없음
+for idx, lvl in enumerate(range(1, 4)):
     r = 5+idx
+    ws3.row_dimensions[r].height = 18
+    write_data(ws3, r, 2, f'+{lvl}', bold=True)
+    write_data(ws3, r, 3, '-', bg='FFF5F5F5')
+    write_data(ws3, r, 4, '-', bg='FFF5F5F5')
+    write_data(ws3, r, 5, '-', bg='FFF5F5F5')
+    ws3.merge_cells(start_row=r, start_column=6, end_row=r, end_column=9)
+    write_data(ws3, r, 6, '델피나드 기운 없음 (안전 구간)', bg='FFF5F5F5', align=left())
+
+# +4~+10: 델피나드 기운 적용
+for idx, lvl in enumerate(range(4, 11)):
+    r = 8+idx
     cfg = ENERGY[lvl]; ceil = math.ceil(100/cfg['epf'])
     ws3.row_dimensions[r].height = 18
     write_data(ws3, r, 2, f'+{lvl}', bold=True)
@@ -578,12 +591,23 @@ for idx, lvl in enumerate(range(4,11)):
     ws3.merge_cells(start_row=r, start_column=6, end_row=r, end_column=9)
     write_data(ws3, r, 6, '100% 성공 보장', bg='FFE8F5E9', bold=True)
 
-write_header(ws3, 14, 2, '■ 천장 도달 확률', span=9, bg=C_SUBHDR[2:])
-write_header(ws3, 15, 2, '강화 단계')
-for ti,t in enumerate(TIER): write_header(ws3, 15, 3+ti, t)
-write_header(ws3, 15, 10, '비고')
-for idx, lvl in enumerate(range(4,11)):
-    r = 16+idx
+write_header(ws3, 18, 2, '■ 천장 도달 확률', span=9, bg=C_SUBHDR[2:])
+write_header(ws3, 19, 2, '강화 단계')
+for ti,t in enumerate(TIER): write_header(ws3, 19, 3+ti, t)
+write_header(ws3, 19, 10, '비고')
+
+# +1~+3: 천장 없음
+for idx, lvl in enumerate(range(1, 4)):
+    r = 20+idx
+    ws3.row_dimensions[r].height = 18
+    write_data(ws3, r, 2, f'+{lvl}', bold=True)
+    for ti in range(7):
+        write_data(ws3, r, 3+ti, '-', bg='FFF5F5F5')
+    write_data(ws3, r, 10, f'성공률 T4: {PROBS[lvl][3]*100:.0f}%')
+
+# +4~+10: 천장 확률 표시
+for idx, lvl in enumerate(range(4, 11)):
+    r = 23+idx
     ws3.row_dimensions[r].height = 18
     write_data(ws3, r, 2, f'+{lvl}', bold=True)
     for ti in range(7):
