@@ -230,7 +230,7 @@ def _do_disassemble(item_id: int) -> None:
     if item is None:
         return
     grade = _grade(item)          # 등급은 티어 기준
-    qty   = item['level']         # 수량 미정 → 강화 단계 수만큼 임시 적용
+    qty   = item['level']         # 수량 = 강화 단계 수
     if qty > 0:
         s['stones'][grade] += qty
         _log(f"🔨 {_tier_label(item)}+{item['level']} 분해 → {grade} 충전석 {qty}개 획득")

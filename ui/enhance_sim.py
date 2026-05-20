@@ -468,7 +468,7 @@ def _render_montecarlo(tier_idx: int = 3) -> None:
 
                     grade = TIER_GRADE[bd_tier] if level > 0 else None
                     if grade:
-                        stones[grade] += level   # 수량=단계 수 (미정 기획안)
+                        stones[grade] += level   # 수량 = 강화 단계 수
                     lv_dist[level] += 1
 
                 sim_results.append({'stones': stones, 'lv_dist': dict(lv_dist)})
@@ -549,7 +549,7 @@ def _render_montecarlo(tier_idx: int = 3) -> None:
         st.dataframe(pd.DataFrame(detail_bd).set_index("최종 레벨"),
                      use_container_width=True)
 
-        st.caption("💡 충전석 획득 수량은 '강화 단계 수 = 획득량'으로 임시 적용 (기획 미정).")
+        st.caption("💡 충전석 획득 수량 = 강화 단계 수 (+N 아이템 분해 시 N개 획득)")
 
     # ── 선택 티어 누적 충전석 상세 ───────────────────────────────
     if "mc_all_pre" in st.session_state:

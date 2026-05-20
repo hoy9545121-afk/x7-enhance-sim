@@ -426,11 +426,11 @@ for ri, (name, desc, dest, src, note, bg) in enumerate(scenarios, 14):
 ws0.merge_cells('B18:J18')
 ws0.cell(18, 2, '■ 신규 시스템 상세').font = hfont(size=11, color='FF1F3A5A')
 ext_notes = [
-    ('충전석 획득 방법', '강화된 장비를 분해하면 강화 단계에 비례한 충전석 획득 (단계 수=획득량, 미정)'),
+    ('충전석 획득 방법', '강화된 장비를 분해하면 강화 단계 수만큼 충전석 획득 (+N 아이템 → N개)'),
     ('충전석 등급 기준', '티어 기준: T1~T3=하급 / T4~T5=중급 / T6~T7=상급 (분해 획득·복구 소모 모두 동일)'),
     ('복구 비용 등급', '복구 소모 등급 = 분해 획득 등급 = 티어 기준 (강화 단계와 무관)'),
     ('메인 아이템 보존', '횟수 0이 되어도 파괴 없음 → 강화 단계 및 델피나드 기운 진행도 완전 보존'),
-    ('밸런스 시사점', '충전석 분해 수급 설계에 따라 강화 비용이 크게 달라짐 — 분해 수량(미정) 확정 필요'),
+    ('밸런스 시사점', '충전석 분해 수급 설계에 따라 강화 비용이 크게 달라짐 — 분해 수량 = 강화 단계 수 확정'),
 ]
 for i, (k, v) in enumerate(ext_notes, 19):
     ws0.row_dimensions[i].height = 22
@@ -636,9 +636,9 @@ for idx in range(7):
     bg_g  = _grade_bg[grade]
     write_data(ws4, r, 2, TIER[idx],  bold=True)
     write_data(ws4, r, 3, grade,      bold=True, bg=bg_g[2:])
-    write_data(ws4, r, 4, '미정',     bg='FFFFF2CC')
+    write_data(ws4, r, 4, '강화 단계 수',  bg='FFE8F5E9')
     ws4.merge_cells(start_row=r, start_column=5, end_row=r, end_column=9)
-    write_data(ws4, r, 5, '획득 수량 = 강화 단계 수 (기획 미정)', bg='FFFFFFFF', align=left())
+    write_data(ws4, r, 5, '+N 아이템 분해 시 N개 획득', bg='FFFFFFFF', align=left())
 
 # ── 강화 단계별 복구 소모 충전석 수량 표
 write_header(ws4, 22, 2, '■ 강화 단계별 복구 소모 충전석 수량 (등급은 위 티어 기준)', span=9, bg=C_SUBHDR[2:])
