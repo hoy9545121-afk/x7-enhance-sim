@@ -159,6 +159,27 @@ def _do_bulk_enhance_all() -> dict:
     return {'attempts': attempts, 'success': success, 'fail': fail, 'stopped': stopped}
 
 
+def _do_bulk_disassemble_all() -> dict:
+    """인벤토리 전체 아이템을 일괄 분해.
+    반환: {'count': int, 'stones': dict}
+    """
+    s = _s()
+    count = 0
+    gained = {'하급': 0, '중급': 0, '상급': 0}
+    for item in list(s['items']):
+        grade = _grade(item)
+        qty   = item['level']
+        if qty > 0:
+            s['stones'][grade] += qty
+            gained[grade]      += qty
+        count += 1
+    s['items']       = []
+    s['selected_id'] = None
+    parts = [f"{g} {n}개" for g, n in gained.items() if n > 0]
+    _log(f"🔨 일괄 분해 {count}개 → " + (', '.join(parts) if parts else '충전석 없음'))
+    return {'count': count, 'stones': gained}
+
+
 def _add_item(tier: int) -> None:
     s    = _s()
     item = _new_item(s['next_id'], tier)
@@ -299,11 +320,12 @@ def render_inventory_sim() -> None:
 
     st.divider()
 
-    # 일괄 강화 버튼
+    # 일괄 버튼 행
     items_with_charges = [it for it in s['items'] if it['charges'] > 0 and it['level'] < 10]
     can_bulk = bool(items_with_charges) and s['scrolls'] >= 1 and s['gold'] >= s['gold_cost']
+    can_dis  = bool(s['items'])
 
-    bcol1, bcol2 = st.columns([2, 3])
+    bcol1, bcol2 = st.columns(2)
     if bcol1.button(
         f'⚡ 전체 오링까지 강화 ({len(items_with_charges)}개 대상)',
         use_container_width=True, type='primary', disabled=not can_bulk,
@@ -317,7 +339,19 @@ def render_inventory_sim() -> None:
             icon='⚡'
         )
         st.rerun()
-    bcol2.caption('인벤토리의 모든 아이템을 충전 횟수가 0이 될 때까지 순서대로 강화합니다.')
+
+    if bcol2.button(
+        f'🔨 전체 분해 ({len(s["items"])}개)',
+        use_container_width=True, disabled=not can_dis,
+        key='bulk_dis'
+    ):
+        result = _do_bulk_disassemble_all()
+        parts  = [f"{g} {n}개" for g, n in result['stones'].items() if n > 0]
+        st.toast(
+            f"🔨 {result['count']}개 분해 → " + (', '.join(parts) if parts else '충전석 없음'),
+            icon='🔨'
+        )
+        st.rerun()
 
     st.divider()
 
